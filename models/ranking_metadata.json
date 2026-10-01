@@ -1,0 +1,43 @@
+{
+  "model_name": "LightGBM",
+  "selection_metric": "NDCG@5 -> Recall@3 -> PR-AUC",
+  "test_pr_auc": 1.0,
+  "test_roc_auc": 1.0,
+  "test_ndcg_at_5": 1.0,
+  "test_recall_at_3": 0.3,
+  "features": [
+    "asset_criticality",
+    "risk_score",
+    "alert_count",
+    "severity_num",
+    "source_count",
+    "mitre_count",
+    "behavioral_anomaly",
+    "privileged",
+    "cross_source",
+    "confidence_max",
+    "duration_min",
+    "anomaly_max",
+    "anomaly_mean"
+  ],
+  "split": "chronological 60/20/20 by incident start time",
+  "dataset_size": 3000,
+  "incident_count": 150,
+  "training_note": "Ground-truth fields are used only to create offline labels. No ground-truth IDs/labels are runtime model features.",
+  "candidates": [
+    {
+      "model": "LightGBM",
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "ndcg_at_5": 1.0,
+      "recall_at_3": 0.3
+    },
+    {
+      "model": "CatBoost",
+      "roc_auc": 1.0,
+      "pr_auc": 0.9999999999999999,
+      "ndcg_at_5": 1.0,
+      "recall_at_3": 0.3
+    }
+  ]
+}
