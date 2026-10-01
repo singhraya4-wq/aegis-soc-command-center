@@ -1,5 +1,425 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AEGIS SOC v2</title><style>
-body{font-family:Inter,system-ui;background:#0b1020;color:#e8edf7;margin:0}main{max-width:1200px;margin:auto;padding:28px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{background:#121a2b;border:1px solid #25304a;border-radius:14px;padding:18px}.metric{font-size:30px;font-weight:800}.muted{color:#94a3b8}.incident{display:flex;justify-content:space-between;align-items:center;padding:14px;border-top:1px solid #25304a}.risk{font-weight:800;font-size:22px}.pill{padding:5px 9px;border-radius:999px;background:#26324b}.btn{background:#e8edf7;color:#0b1020;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}.mono{font-family:ui-monospace,monospace}.small{font-size:13px}
-</style></head><body><main><h1>AEGIS SOC Command Center</h1><p class="muted">Evidence-first incident intelligence • MITRE ATT&CK v19.2 • human-in-the-loop</p><div class="grid"><div class="card"><div class="muted">Raw alerts</div><div id="alerts" class="metric">—</div></div><div class="card"><div class="muted">Correlated incidents</div><div id="incidents" class="metric">—</div></div><div class="card"><div class="muted">Critical</div><div id="critical" class="metric">—</div></div><div class="card"><div class="muted">Ranking</div><div id="model" class="metric small">—</div></div></div><br><button class="btn" onclick="simulate()">Run attack replay</button><div class="card" style="margin-top:18px"><h2>Priority queue</h2><div id="queue">Loading…</div></div><div id="detail" class="card" style="margin-top:18px;display:none"></div></main><script>
-async function load(){let r=await fetch('/api/overview');let d=await r.json();for(let k of ['alerts','incidents','critical'])document.getElementById(k).textContent=d[k];document.getElementById('model').textContent=d.models.join(', ');document.getElementById('queue').innerHTML=d.top.map(x=>`<div class="incident" onclick="openI('${x.id}')"><div><b>${x.id}</b> <span class="pill">${x.severity}</span><div>${x.title}</div><div class="muted small">${x.alerts} alerts • ${x.model}</div></div><div class="risk">${x.risk}</div></div>`).join('')}async function openI(id){let r=await fetch('/api/incidents/'+id);let d=await r.json();let i=d.incident;document.getElementById('detail').style.display='block';document.getElementById('detail').innerHTML=`<h2>${i.incident_id}: ${i.title}</h2><p><b>Risk:</b> ${i.risk_score} • <b>Model:</b> ${i.ranking_model}</p><p><b>Why grouped:</b> ${(i.correlation_reasons||[]).join(' • ')}</p><p><b>ATT&CK:</b> ${(i.mitre||[]).map(x=>x.technique_id+' '+x.name+' ('+x.status+')').join(' • ')||'Insufficient evidence'}</p><h3>Evidence</h3>${d.evidence.map(e=>`<div class="small mono">${e.evidence_id} — ${e.statement}</div>`).join('')}<h3>AI / analyst brief</h3><p>${i.summary}</p>`}async function simulate(){let r=await fetch('/api/simulate',{method:'POST'});let d=await r.json();alert('Replay produced '+d.alerts+' alerts and '+d.incidents.length+' correlated incident(s).');load()}load();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis SOC Command Center</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkblue: {
+                            900: '#0b0f19',
+                            800: '#111827',
+                            700: '#1f2937',
+                            600: '#374151'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-darkblue-900 text-gray-100 font-sans antialiased min-h-screen flex flex-col" x-data="socApp()">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-darkblue-800 border-b border-gray-800 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid fa-shield-halved text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-wider text-white">AEGIS <span class="text-blue-500 font-light">SOC COMMAND</span></h1>
+                    <p class="text-xs text-gray-400">Autonomous Threat Intelligence & Response Matrix</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-2 h-2 mr-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                    Live Streaming Feed Active
+                </span>
+                <div class="text-right hidden sm:block">
+                    <div class="text-xs text-gray-400">System Time (UTC)</div>
+                    <div class="text-sm font-mono text-gray-200" x-text="currentTime"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- KPI Metrics Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Metric 1 -->
+            <div class="bg-darkblue-800 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Network Flows</p>
+                    <span class="p-2 bg-blue-500/10 text-blue-400 rounded-lg"><i class="fa-solid fa-network-wired"></i></span>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-2xl font-bold font-mono text-white" x-text="metrics.total_events">142,859</span>
+                    <span class="ml-2 text-xs text-emerald-400 font-medium">+12.4% /hr</span>
+                </div>
+            </div>
+            <!-- Metric 2 -->
+            <div class="bg-darkblue-800 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Suspicious Events</p>
+                    <span class="p-2 bg-amber-500/10 text-amber-400 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-2xl font-bold font-mono text-amber-400" x-text="metrics.suspicious_count">1,240</span>
+                    <span class="ml-2 text-xs text-amber-400 font-medium">Model Conf. >0.8</span>
+                </div>
+            </div>
+            <!-- Metric 3 -->
+            <div class="bg-darkblue-800 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Critical Alerts</p>
+                    <span class="p-2 bg-rose-500/10 text-rose-400 rounded-lg"><i class="fa-solid fa-fire"></i></span>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-2xl font-bold font-mono text-rose-500" x-text="metrics.critical_alerts">38</span>
+                    <span class="ml-2 text-xs text-rose-400 font-medium">Requiring Action</span>
+                </div>
+            </div>
+            <!-- Metric 4 -->
+            <div class="bg-darkblue-800 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Threat Risk Index</p>
+                    <span class="p-2 bg-purple-500/10 text-purple-400 rounded-lg"><i class="fa-solid fa-chart-line"></i></span>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-2xl font-bold font-mono text-purple-400" x-text="metrics.risk_index">88.4 (HIGH)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters and Controls -->
+        <div class="bg-darkblue-800 border border-gray-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3 w-full md:w-auto">
+                <div class="relative w-full md:w-80">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                        <i class="fa-solid fa-search"></i>
+                    </span>
+                    <input type="text" x-model="searchQuery" placeholder="Filter by IP, attack type, or ID..." class="w-full bg-darkblue-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+            <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
+                <select x-model="selectedSeverity" class="bg-darkblue-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500">
+                    <option value="ALL">All Severities</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                </select>
+                <button @click="loadDataset()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition shadow-lg shadow-blue-600/20 flex items-center space-x-2">
+                    <i class="fa-solid fa-rotate"></i>
+                    <span>Refresh Data</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Events Table Card -->
+        <div class="bg-darkblue-800 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
+            <div class="px-6 py-4 border-b border-gray-800 flex justify-between items-center">
+                <h3 class="font-semibold text-gray-200">Active Threat Streams & Triage Pipeline</h3>
+                <span class="text-xs text-gray-400" x-text="filteredEvents.length + ' events displayed'"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-darkblue-900/50 text-gray-400 text-xs uppercase tracking-wider border-b border-gray-800">
+                            <th class="py-3 px-6">Event ID / Time</th>
+                            <th class="py-3 px-6">Attack Family</th>
+                            <th class="py-3 px-6">Source &rarr; Destination</th>
+                            <th class="py-3 px-6">Severity</th>
+                            <th class="py-3 px-6">Model Risk</th>
+                            <th class="py-3 px-6">Triage Status</th>
+                            <th class="py-3 px-6 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-800 text-sm">
+                        <template x-for="event in filteredEvents" :key="event.id">
+                            <tr class="hover:bg-darkblue-700/40 transition">
+                                <td class="py-4 px-6">
+                                    <div class="font-mono font-medium text-blue-400" x-text="event.id"></div>
+                                    <div class="text-xs text-gray-400" x-text="event.timestamp"></div>
+                                </td>
+                                <td class="py-4 px-6 font-medium text-gray-200" x-text="event.attack_family"></td>
+                                <td class="py-4 px-6 font-mono text-xs text-gray-300">
+                                    <div>SRC: <span class="text-gray-100" x-text="event.source_ip"></span></div>
+                                    <div>DST: <span class="text-gray-400" x-text="event.dest_ip"></span></div>
+                                </td>
+                                <td class="py-4 px-6">
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold"
+                                        :class="{
+                                            'bg-rose-500/10 text-rose-400 border border-rose-500/20': event.severity === 'CRITICAL',
+                                            'bg-amber-500/10 text-amber-400 border border-amber-500/20': event.severity === 'HIGH',
+                                            'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20': event.severity === 'MEDIUM',
+                                            'bg-blue-500/10 text-blue-400 border border-blue-500/20': event.severity === 'LOW'
+                                        }" x-text="event.severity"></span>
+                                </td>
+                                <td class="py-4 px-6 font-mono">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-16 bg-darkblue-900 rounded-full h-2 overflow-hidden border border-gray-700">
+                                            <div class="h-full bg-blue-500" :style="'width: ' + (event.risk_score * 100) + '%'"></div>
+                                        </div>
+                                        <span class="text-xs font-medium text-gray-300" x-text="(event.risk_score * 100).toFixed(1) + '%'"></span>
+                                    </div>
+                                </td>
+                                <td class="py-4 px-6">
+                                    <span class="inline-flex items-center text-xs font-medium"
+                                        :class="{
+                                            'text-rose-400': event.triage_status === 'Escalated',
+                                            'text-amber-400': event.triage_status === 'Investigating',
+                                            'text-emerald-400': event.triage_status === 'Auto-Mitigated' || event.triage_status === 'Resolved',
+                                            'text-gray-400': event.triage_status === 'Ignored'
+                                        }">
+                                        <span class="w-1.5 h-1.5 rounded-full mr-1.5"
+                                            :class="{
+                                                'bg-rose-400': event.triage_status === 'Escalated',
+                                                'bg-amber-400': event.triage_status === 'Investigating',
+                                                'bg-emerald-400': event.triage_status === 'Auto-Mitigated' || event.triage_status === 'Resolved',
+                                                'bg-gray-400': event.triage_status === 'Ignored'
+                                            }"></span>
+                                        <span x-text="event.triage_status"></span>
+                                    </span>
+                                </td>
+                                <td class="py-4 px-6 text-right">
+                                    <button @click="openModal(event)" class="px-3 py-1.5 bg-darkblue-700 hover:bg-blue-600 hover:text-white text-gray-300 rounded-lg text-xs transition border border-gray-600">
+                                        <i class="fa-solid fa-microchip mr-1"></i> Analyze
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- AI Reasoning Drill-Down Modal -->
+    <div x-show="modalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" x-cloak>
+        <div @click.away="modalOpen = false" class="bg-darkblue-800 border border-gray-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-6 relative">
+            <div class="flex justify-between items-start border-b border-gray-700 pb-4">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-mono text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded border border-blue-500/20" x-text="activeEvent.id"></span>
+                        <span class="text-xs font-semibold px-2.5 py-0.5 rounded uppercase"
+                            :class="{
+                                'bg-rose-500/10 text-rose-400 border border-rose-500/20': activeEvent.severity === 'CRITICAL',
+                                'bg-amber-500/10 text-amber-400 border border-amber-500/20': activeEvent.severity === 'HIGH',
+                                'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20': activeEvent.severity === 'MEDIUM',
+                                'bg-blue-500/10 text-blue-400 border border-blue-500/20': activeEvent.severity === 'LOW'
+                            }" x-text="activeEvent.severity"></span>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mt-1" x-text="activeEvent.attack_family"></h2>
+                </div>
+                <button @click="modalOpen = false" class="text-gray-400 hover:text-white text-lg p-2"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 bg-darkblue-900 p-4 rounded-xl border border-gray-800 text-xs">
+                <div>
+                    <span class="text-gray-400 block mb-1">Source Endpoint:</span>
+                    <span class="font-mono font-medium text-gray-200 text-sm" x-text="activeEvent.source_ip"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block mb-1">Destination Target:</span>
+                    <span class="font-mono font-medium text-gray-200 text-sm" x-text="activeEvent.dest_ip"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block mb-1">XGBoost Risk Score:</span>
+                    <span class="font-mono font-medium text-blue-400 text-sm" x-text="(activeEvent.risk_score * 100).toFixed(1) + '%'"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block mb-1">Triage Protocol:</span>
+                    <span class="font-mono font-medium text-emerald-400 text-sm" x-text="activeEvent.triage_status"></span>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400"><i class="fa-solid fa-brain text-purple-400 mr-2"></i>Multi-Agent Reasoning Trace</h4>
+                <div class="bg-darkblue-900 p-4 rounded-xl border border-gray-800 text-sm text-gray-300 font-mono leading-relaxed" x-text="activeEvent.agent_reasoning"></div>
+            </div>
+
+            <div class="space-y-3">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400"><i class="fa-solid fa-shield-cat text-blue-400 mr-2"></i>Recommended Response & Action Plan</h4>
+                <div class="bg-blue-950/30 border border-blue-500/20 p-4 rounded-xl text-sm text-blue-200" x-text="activeEvent.action_plan"></div>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-2">
+                <button @click="modalOpen = false" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition">Close</button>
+                <button @click="alert('Action executed on endpoint ' + activeEvent.source_ip); modalOpen = false;" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition shadow-lg shadow-rose-600/20">Execute Automated Mitigations</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-darkblue-800 border-t border-gray-800 py-4 text-center text-xs text-gray-500">
+        Aegis SOC Command Center &copy; 2026 &bull; Threat Intelligence & Autonomous Response Engine
+    </footer>
+
+    <!-- Frontend Logic Script -->
+    <script>
+        function socApp() {
+            return {
+                currentTime: '',
+                metrics: {
+                    total_events: "142,859",
+                    suspicious_count: "1,240",
+                    critical_alerts: "38",
+                    risk_index: "88.4 (HIGH)"
+                },
+                events: [],
+                searchQuery: '',
+                selectedSeverity: 'ALL',
+                modalOpen: false,
+                activeEvent: {},
+
+                init() {
+                    this.updateTime();
+                    setInterval(() => this.updateTime(), 1000);
+                    this.loadDataset();
+                },
+
+                updateTime() {
+                    const now = new Date();
+                    this.currentTime = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+                },
+
+                loadDataset() {
+                    // Embedded fallback mock dataset matches the JSON file schema
+                    this.events = [
+                        {
+                            id: "AEG-9021",
+                            timestamp: "2026-03-31 14:30:12",
+                            source_ip: "192.168.1.105",
+                            dest_ip: "45.33.32.156",
+                            attack_family: "Brute-Force SSH",
+                            severity: "CRITICAL",
+                            risk_score: 0.984,
+                            triage_status: "Escalated",
+                            agent_reasoning: "High-frequency password guessing signature matched. XGBoost confidence score 0.98. Automatic IP block recommended.",
+                            action_plan: "Isolate host endpoint 192.168.1.105 and revoke active session tokens."
+                        },
+                        {
+                            id: "AEG-9020",
+                            timestamp: "2026-03-31 14:28:45",
+                            source_ip: "10.0.4.15",
+                            dest_ip: "185.220.101.5",
+                            attack_family: "C2 Beaconing",
+                            severity: "CRITICAL",
+                            risk_score: 0.965,
+                            triage_status: "Investigating",
+                            agent_reasoning: "Periodic HTTPS outbound connection intervals detected matching known Cobalt Strike beacon profiles.",
+                            action_plan: "Capture egress packet payload via firewall mirror port."
+                        },
+                        {
+                            id: "AEG-9019",
+                            timestamp: "2026-03-31 14:25:01",
+                            source_ip: "192.168.1.50",
+                            dest_ip: "8.8.8.8",
+                            attack_family: "Data Exfiltration",
+                            severity: "HIGH",
+                            risk_score: 0.842,
+                            triage_status: "Auto-Mitigated",
+                            agent_reasoning: "Unusual outbound data transfer volume (>2GB) directed to an unclassified external cloud endpoint.",
+                            action_plan: "Throttle socket connection and log user identity."
+                        },
+                        {
+                            id: "AEG-9018",
+                            timestamp: "2026-03-31 14:20:10",
+                            source_ip: "172.16.0.22",
+                            dest_ip: "172.16.0.1",
+                            attack_family: "SQL Injection",
+                            severity: "MEDIUM",
+                            risk_score: 0.654,
+                            triage_status: "Resolved",
+                            agent_reasoning: "Malformed HTTP GET query string containing SQL payload patterns blocked by WAF rule #4402.",
+                            action_plan: "Verify WAF exception lists and patch input sanitization module."
+                        },
+                        {
+                            id: "AEG-9017",
+                            timestamp: "2026-03-31 14:15:33",
+                            source_ip: "192.168.1.11",
+                            dest_ip: "192.168.1.254",
+                            attack_family: "Port Scanning",
+                            severity: "LOW",
+                            risk_score: 0.312,
+                            triage_status: "Ignored",
+                            agent_reasoning: "Sequential TCP SYN scan across internal gateway ports matching authorized IT vulnerability scanner profile.",
+                            action_plan: "No action required. Whitelisted internal scanner IP."
+                        },
+                        {
+                            id: "AEG-9016",
+                            timestamp: "2026-03-31 14:10:05",
+                            source_ip: "10.0.2.88",
+                            dest_ip: "10.0.1.5",
+                            attack_family: "Privilege Escalation",
+                            severity: "CRITICAL",
+                            risk_score: 0.991,
+                            triage_status: "Escalated",
+                            agent_reasoning: "Unauthorized execution of SUID binary modification command detected via auditd stream.",
+                            action_plan: "Terminate process tree and force user password reset."
+                        },
+                        {
+                            id: "AEG-9015",
+                            timestamp: "2026-03-31 14:05:44",
+                            source_ip: "192.168.2.14",
+                            dest_ip: "151.101.65.140",
+                            attack_family: "Malware Download",
+                            severity: "HIGH",
+                            risk_score: 0.890,
+                            triage_status: "Auto-Mitigated",
+                            agent_reasoning: "SHA-256 hash match against recent threat feed for malicious dropper script payload.",
+                            action_plan: "Quarantine file via local EDR agent."
+                        },
+                        {
+                            id: "AEG-9014",
+                            timestamp: "2026-03-31 13:58:20",
+                            source_ip: "192.168.1.105",
+                            dest_ip: "10.0.0.2",
+                            attack_family: "Credential Dumping",
+                            severity: "HIGH",
+                            risk_score: 0.815,
+                            triage_status: "Investigating",
+                            agent_reasoning: "Mimikatz signature heuristics triggered on local LSASS memory access routine.",
+                            action_plan: "Suspend active service handles and trigger host forensics dump."
+                        }
+                    ];
+                },
+
+                get filteredEvents() {
+                    return this.events.filter(event => {
+                        const matchesSearch = 
+                            event.id.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                            event.attack_family.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                            event.source_ip.includes(this.searchQuery) ||
+                            event.dest_ip.includes(this.searchQuery);
+                        
+                        const matchesSeverity = this.selectedSeverity === 'ALL' || event.severity === this.selectedSeverity;
+
+                        return matchesSearch && matchesSeverity;
+                    });
+                },
+
+                openModal(event) {
+                    this.activeEvent = event;
+                    this.modalOpen = true;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
