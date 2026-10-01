@@ -1,0 +1,112 @@
+{
+  "metadata": {
+    "platform": "Aegis SOC Command Center",
+    "version": "1.0.4",
+    "generated_at": "2026-03-31T14:32:00Z",
+    "total_records": 10
+  },
+  "metrics": {
+    "total_events": 142859,
+    "suspicious_count": 1240,
+    "critical_alerts": 38,
+    "risk_index": "88.4 (HIGH)"
+  },
+  "events": [
+    {
+      "id": "AEG-9021",
+      "timestamp": "2026-03-31 14:30:12",
+      "source_ip": "192.168.1.105",
+      "dest_ip": "45.33.32.156",
+      "attack_family": "Brute-Force SSH",
+      "severity": "CRITICAL",
+      "risk_score": 0.984,
+      "triage_status": "Escalated",
+      "agent_reasoning": "High-frequency password guessing signature matched. XGBoost confidence score 0.98. Automatic IP block recommended.",
+      "action_plan": "Isolate host endpoint 192.168.1.105 and revoke active session tokens."
+    },
+    {
+      "id": "AEG-9020",
+      "timestamp": "2026-03-31 14:28:45",
+      "source_ip": "10.0.4.15",
+      "dest_ip": "185.220.101.5",
+      "attack_family": "C2 Beaconing",
+      "severity": "CRITICAL",
+      "risk_score": 0.965,
+      "triage_status": "Investigating",
+      "agent_reasoning": "Periodic HTTPS outbound connection intervals detected matching known Cobalt Strike beacon profiles.",
+      "action_plan": "Capture egress packet payload via firewall mirror port."
+    },
+    {
+      "id": "AEG-9019",
+      "timestamp": "2026-03-31 14:25:01",
+      "source_ip": "192.168.1.50",
+      "dest_ip": "8.8.8.8",
+      "attack_family": "Data Exfiltration",
+      "severity": "HIGH",
+      "risk_score": 0.842,
+      "triage_status": "Auto-Mitigated",
+      "agent_reasoning": "Unusual outbound data transfer volume (>2GB) directed to an unclassified external cloud endpoint.",
+      "action_plan": "Throttle socket connection and log user identity."
+    },
+    {
+      "id": "AEG-9018",
+      "timestamp": "2026-03-31 14:20:10",
+      "source_ip": "172.16.0.22",
+      "dest_ip": "172.16.0.1",
+      "attack_family": "SQL Injection",
+      "severity": "MEDIUM",
+      "risk_score": 0.654,
+      "triage_status": "Resolved",
+      "agent_reasoning": "Malformed HTTP GET query string containing SQL payload patterns blocked by WAF rule #4402.",
+      "action_plan": "Verify WAF exception lists and patch input sanitization module."
+    },
+    {
+      "id": "AEG-9017",
+      "timestamp": "2026-03-31 14:15:33",
+      "source_ip": "192.168.1.11",
+      "dest_ip": "192.168.1.254",
+      "attack_family": "Port Scanning",
+      "severity": "LOW",
+      "risk_score": 0.312,
+      "triage_status": "Ignored",
+      "agent_reasoning": "Sequential TCP SYN scan across internal gateway ports matching authorized IT vulnerability scanner profile.",
+      "action_plan": "No action required. Whitelisted internal scanner IP."
+    },
+    {
+      "id": "AEG-9016",
+      "timestamp": "2026-03-31 14:10:05",
+      "source_ip": "10.0.2.88",
+      "dest_ip": "10.0.1.5",
+      "attack_family": "Privilege Escalation",
+      "severity": "CRITICAL",
+      "risk_score": 0.991,
+      "triage_status": "Escalated",
+      "agent_reasoning": "Unauthorized execution of SUID binary modification command detected via auditd stream.",
+      "action_plan": "Terminate process tree and force user password reset."
+    },
+    {
+      "id": "AEG-9015",
+      "timestamp": "2026-03-31 14:05:44",
+      "source_ip": "192.168.2.14",
+      "dest_ip": "151.101.65.140",
+      "attack_family": "Malware Download",
+      "severity": "HIGH",
+      "risk_score": 0.890,
+      "triage_status": "Auto-Mitigated",
+      "agent_reasoning": "SHA-256 hash match against recent threat feed for malicious dropper script payload.",
+      "action_plan": "Quarantine file via local EDR agent."
+    },
+    {
+      "id": "AEG-9014",
+      "timestamp": "2026-03-31 13:58:20",
+      "source_ip": "192.168.1.105",
+      "dest_ip": "10.0.0.2",
+      "attack_family": "Credential Dumping",
+      "severity": "HIGH",
+      "risk_score": 0.815,
+      "triage_status": "Investigating",
+      "agent_reasoning": "Mimikatz signature heuristics triggered on local LSASS memory access routine.",
+      "action_plan": "Suspend active service handles and trigger host forensics dump."
+    }
+  ]
+}
